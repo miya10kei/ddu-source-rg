@@ -134,7 +134,8 @@ export class Source extends BaseSource<Params> {
         display,
         action: {
           // When paths given, path is absolute path
-          path: path ? resolve(cwd, path) : "",
+          //path: path ? resolve(cwd, path) : "",
+          path: path ? path : "",
           lineNr,
           col,
           text,
