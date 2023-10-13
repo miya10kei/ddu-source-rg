@@ -19,9 +19,7 @@ type HighlightGroup = {
   word: string;
 };
 
-type InputType =
-  | "regex"
-  | "migemo";
+type InputType = "regex" | "migemo";
 
 type Params = {
   cmd: string;
@@ -31,6 +29,7 @@ type Params = {
   input: string;
   paths: string[];
   highlights: HighlightGroup;
+  minInputLength: number;
 };
 
 async function* iterLine(r: ReadableStream<Uint8Array>): AsyncIterable<string> {
@@ -69,6 +68,7 @@ export class Source extends BaseSource<Params> {
     const hlGroupLineNr = args.sourceParams.highlights?.lineNr ?? "";
     const hlGroupWord = args.sourceParams.highlights?.word ?? "";
     const displayText = args.sourceParams.displayText;
+    const minInputLength = args.sourceParams.minInputLength ?? 3;
 
     const parseJson = (line: string, cwd: string) => {
       line = line.trim();
@@ -126,7 +126,9 @@ export class Source extends BaseSource<Params> {
       const col = result ? Number(getParam(result, 3)) : 0;
       const text = result ? getParam(result, 4) : "";
       const display = result
-        ? displayText ? line : result.slice(1, 3).join(":")
+        ? displayText
+          ? line
+          : result.slice(1, 3).join(":")
         : "";
 
       return {
@@ -159,7 +161,7 @@ export class Source extends BaseSource<Params> {
       async start(controller) {
         const input = await getInput();
 
-        if (input == "") {
+        if (input == "" || input.length < minInputLength) {
           controller.close();
           return;
         }
@@ -177,28 +179,24 @@ export class Source extends BaseSource<Params> {
         let enqueueSize = enqueueSize1st;
         let numChunks = 0;
 
-        const cwd = args.sourceOptions.path.length !== 0
-          ? treePath2Filename(args.sourceOptions.path)
-          : await fn.getcwd(args.denops) as string;
+        const cwd =
+          args.sourceOptions.path.length !== 0
+            ? treePath2Filename(args.sourceOptions.path)
+            : ((await fn.getcwd(args.denops)) as string);
 
-        const proc = new Deno.Command(
-          cmd[0],
-          {
-            args: cmd.slice(1),
-            stdout: "piped",
-            stderr: "piped",
-            stdin: "null",
-            cwd,
-          },
-        ).spawn();
+        const proc = new Deno.Command(cmd[0], {
+          args: cmd.slice(1),
+          stdout: "piped",
+          stderr: "piped",
+          stdin: "null",
+          cwd,
+        }).spawn();
 
         try {
-          for await (
-            const line of abortable(
-              iterLine(proc.stdout),
-              abortController.signal,
-            )
-          ) {
+          for await (const line of abortable(
+            iterLine(proc.stdout),
+            abortController.signal,
+          )) {
             if (args.sourceParams.args.includes("--json")) {
               const ret = parseJson(line, cwd);
               if (ret) {
@@ -226,12 +224,10 @@ export class Source extends BaseSource<Params> {
             console.error(e);
           }
         } finally {
-          for await (
-            const mes of abortable(
-              iterLine(proc.stderr),
-              abortController.signal,
-            )
-          ) {
+          for await (const mes of abortable(
+            iterLine(proc.stderr),
+            abortController.signal,
+          )) {
             console.error(mes);
           }
 
